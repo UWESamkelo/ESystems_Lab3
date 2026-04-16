@@ -1,0 +1,123 @@
+/* Title: Getting Ready to Program the Serial Communication of the Smart Home System
+Author: Samkelo Mareka
+Date: 12/02/2026
+Student ID: 24004894
+*/
+
+#include "mbed.h"
+#include <string.h>
+
+// Initialize UART communication at 115200 baud rate
+UnbufferedSerial uartUsb(USBTX, USBRX, 115200);
+
+// Global variables for system states
+bool gasAlarmActive = false;
+bool tempAlarmActive = false;
+bool monitoringMode = false;
+
+// Mbed OS hardware timer for non-blocking periodic reports
+Timer reportTimer;
+
+// Helper function to send strings over UART
+void printUart(const char* message) {
+    uartUsb.write(message, strlen(message));
+}
+
+// Function to handle incoming commands from the PC
+void uartTask() {
+    char key = '\0';
+    
+    // Check if data is available to read from the serial terminal
+    if (uartUsb.readable()) {
+        uartUsb.read(&key, 1);
+        
+        switch(key) {
+            case '1': // Toggle gas alarm
+                gasAlarmActive = !gasAlarmActive;
+                if (gasAlarmActive) {
+                    printUart("\r\nWARNING: GAS DETECTED\r\n");
+                } else {
+                    printUart("\r\nGas alarm deactivated\r\n");
+                }
+                break;
+                
+            case '2': // Request gas state
+                if (gasAlarmActive) {
+                    printUart("\r\nGAS ALARM ACTIVE\r\n");
+                } else {
+                    printUart("\r\nGAS ALARM CLEAR\r\n");
+                }
+                break;
+                
+            case '3': // Request temp state
+                if (tempAlarmActive) {
+                    printUart("\r\nTEMP ALARM ACTIVE\r\n");
+                } else {
+                    printUart("\r\nTEMP ALARM CLEAR\r\n");
+                }
+                break;
+                
+            case '4': // Toggle temp alarm
+                tempAlarmActive = !tempAlarmActive;
+                if (tempAlarmActive) {
+                    printUart("\r\nWARNING: TEMPERATURE TOO HIGH\r\n");
+                } else {
+                    printUart("\r\nTemperature alarm deactivated\r\n");
+                }
+                break;
+                
+            case '5': // Reset both alarms
+                gasAlarmActive = false;
+                tempAlarmActive = false;
+                printUart("\r\nALARMS RESET\r\n");
+                break;
+                
+            case '6': // Enter/Exit continuous monitoring mode
+                monitoringMode = !monitoringMode;
+                if (monitoringMode) {
+                    printUart("\r\nMonitoring Mode: ON\r\n");
+                    reportTimer.start(); // Start the timer when mode is active
+                } else {
+                    printUart("\r\nMonitoring Mode: OFF\r\n");
+                    reportTimer.stop();
+                    reportTimer.reset(); // Reset so it starts fresh next time
+                }
+                break;
+                
+            default:
+                printUart("\r\nInvalid command. Press numbers 1-6.\r\n");
+                break;
+        }
+    }
+}
+
+int main() {
+    printUart("Smart Home System Starting...\r\n");
+    printUart("Use keys 1 to 6 to interact.\r\n");
+
+    while (true) {
+        // Process any incoming UART inputs
+        uartTask();
+        
+        // Handle the continuous monitoring periodic report
+        if (monitoringMode) {
+            // Check if 2 seconds have elapsed 
+            if (reportTimer.elapsed_time() >= 2s) {
+                printUart("\r\n--- Status Report ---\r\n");
+                
+                if (gasAlarmActive) printUart("Gas: ACTIVE\r\n");
+                else printUart("Gas: CLEAR\r\n");
+                
+                if (tempAlarmActive) printUart("Temp: ACTIVE\r\n");
+                else printUart("Temp: CLEAR\r\n");
+                
+                printUart("---------------------\r\n");
+                
+                reportTimer.reset(); // Reset timer for the next 2-second interval
+            }
+        }
+        
+        // Small thread sleep to stabilize the main loop and prevent watchdog resets
+        ThisThread::sleep_for(10ms);
+    }
+}
